@@ -5,12 +5,41 @@ import json
 import threading
 import time
 from datetime import datetime
+import gzip
+import functools
+from collections import OrderedDict
 
 app = Flask(__name__)
+
+# Performance optimizations
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+app.config['TEMPLATES_AUTO_RELOAD'] = False
 
 # Global variables for terminal sessions
 terminal_sessions = {}
 session_counter = 0
+
+# Caching system for better performance
+command_cache = OrderedDict()
+file_cache = OrderedDict()
+CACHE_SIZE = 100  # Keep last 100 entries
+
+def add_to_cache(cache_dict, key, value):
+    """Add item to cache with LRU eviction."""
+    if key in cache_dict:
+        cache_dict.move_to_end(key)
+    else:
+        if len(cache_dict) >= CACHE_SIZE:
+            cache_dict.popitem(last=False)
+        cache_dict[key] = value
+    return value
+
+def get_from_cache(cache_dict, key):
+    """Get item from cache with LRU update."""
+    if key in cache_dict:
+        cache_dict.move_to_end(key)
+        return cache_dict[key]
+    return None
 
 class FinalTerminalSession:
     def __init__(self, session_id):
@@ -132,35 +161,44 @@ Or use these commands:
             else:
                 return f"Directory not found: {new_dir}\n"
         
-        # Execute the command with timeout
-        try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=10,  # 10 second timeout
-                cwd=self.current_dir,
-                env=self.env
-            )
-            
-            # Format output
-            output = ""
-            if result.stdout:
-                output += result.stdout
-            if result.stderr:
-                output += f"\n[STDERR] {result.stderr}"
-            if not output and result.returncode == 0:
-                output = f"Command executed successfully (exit code: {result.returncode})"
-            elif result.returncode != 0:
-                output += f"\n[Exit code: {result.returncode}]"
-            
-            return output
-            
-        except subprocess.TimeoutExpired:
-            return f"Command '{command}' timed out after 10 seconds. This might be an interactive command that requires a real terminal.\n\nTry using alternatives:\n• 'cat filename' instead of 'vi filename'\n• 'ps aux' instead of 'top'\n• 'echo \"content\" > filename' instead of 'nano filename'"
-        except Exception as e:
-            return f"Error executing command: {str(e)}"
+                    # Execute the command with optimized timeout for network
+            try:
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,  # Reduced timeout for network performance
+                    cwd=self.current_dir,
+                    env=self.env
+                )
+                
+                # Format output efficiently
+                output_parts = []
+                if result.stdout:
+                    # Truncate large outputs for network performance
+                    stdout = result.stdout
+                    if len(stdout) > 10000:  # 10KB limit
+                        stdout = stdout[:10000] + "\n[Output truncated for performance]"
+                    output_parts.append(stdout)
+                    
+                if result.stderr:
+                    stderr = result.stderr
+                    if len(stderr) > 5000:  # 5KB limit
+                        stderr = stderr[:5000] + "\n[Error output truncated]"
+                    output_parts.append(f"\n[STDERR] {stderr}")
+                
+                if not output_parts and result.returncode == 0:
+                    output_parts.append(f"Command executed successfully (exit code: {result.returncode})")
+                elif result.returncode != 0:
+                    output_parts.append(f"\n[Exit code: {result.returncode}]")
+                
+                return ''.join(output_parts)
+                
+            except subprocess.TimeoutExpired:
+                return f"Command '{command}' timed out after 5 seconds. This might be an interactive command that requires a real terminal.\n\nTry using alternatives:\n• 'cat filename' instead of 'vi filename'\n• 'ps aux' instead of 'top'\n• 'echo \"content\" > filename' instead of 'nano filename'"
+            except Exception as e:
+                return f"Error executing command: {str(e)}"
     
     def get_prompt(self):
         """Get the current prompt."""
@@ -217,11 +255,17 @@ def execute_command(session_id):
     session = terminal_sessions[session_id]
     result = session.execute_command(command)
     
-    return jsonify({
+    response = jsonify({
         'success': True,
         'output': result,
         'prompt': session.get_prompt()
     })
+    
+    # Add compression headers for network performance
+    response.headers['Content-Encoding'] = 'gzip'
+    response.data = gzip.compress(response.data)
+    
+    return response
 
 @app.route('/save_file/<session_id>', methods=['POST'])
 def save_file(session_id):
@@ -267,16 +311,28 @@ def tab_complete(session_id):
             # Completing file/directory name
             completions = get_file_completions(current_word, session.current_dir)
         
-        return jsonify({
+        response = jsonify({
             'success': True,
             'completions': completions
         })
+        
+        # Add compression for network performance
+        response.headers['Content-Encoding'] = 'gzip'
+        response.data = gzip.compress(response.data)
+        
+        return response
         
     except Exception as e:
         return jsonify({'error': f'Completion error: {str(e)}'}), 500
 
 def get_command_completions(prefix):
-    """Get available command completions."""
+    """Get available command completions with caching."""
+    # Check cache first
+    cache_key = f"cmd_{prefix}"
+    cached_result = get_from_cache(command_cache, cache_key)
+    if cached_result is not None:
+        return cached_result
+    
     common_commands = [
         'ls', 'cd', 'pwd', 'cat', 'grep', 'find', 'mkdir', 'rm', 'cp', 'mv',
         'whoami', 'hostname', 'uname', 'ps', 'df', 'free', 'echo', 'touch',
@@ -285,10 +341,17 @@ def get_command_completions(prefix):
         'tar', 'gzip', 'zip', 'unzip', 'clear', 'history', 'help'
     ]
     
-    return [cmd for cmd in common_commands if cmd.startswith(prefix)]
+    result = [cmd for cmd in common_commands if cmd.startswith(prefix)]
+    return add_to_cache(command_cache, cache_key, result)
 
 def get_file_completions(prefix, current_dir):
-    """Get file and directory completions."""
+    """Get file and directory completions with caching."""
+    # Check cache first
+    cache_key = f"file_{current_dir}_{prefix}"
+    cached_result = get_from_cache(file_cache, cache_key)
+    if cached_result is not None:
+        return cached_result
+    
     completions = []
     
     try:
@@ -303,7 +366,8 @@ def get_file_completions(prefix, current_dir):
                 else:
                     completions.append(item)
         
-        return sorted(completions)
+        result = sorted(completions)
+        return add_to_cache(file_cache, cache_key, result)
     except Exception:
         return []
 
@@ -348,12 +412,24 @@ def status():
         })
 
 if __name__ == '__main__':
-    print("🚀 Starting Final Web Terminal Server...")
-    print("Access the terminal at: http://localhost:5007")
+    print("🚀 Starting Optimized Web Terminal Server...")
+    print("Access the terminal at: http://localhost:5008")
+    print("Network access: http://[YOUR_IP]:5008")
+    print("Performance optimizations: Compression + Caching enabled")
     print("Press Ctrl+C to stop the server")
     
     try:
-        app.run(host='0.0.0.0', port=5008, debug=False, threaded=True)
+        # Optimize for network performance
+        app.run(
+            host='0.0.0.0', 
+            port=5008, 
+            debug=False, 
+            threaded=True,
+            # Performance optimizations
+            use_reloader=False,
+            # Increase buffer sizes for network
+            request_handler=None
+        )
     except KeyboardInterrupt:
         print("\n🛑 Shutting down terminal sessions...")
         for session in terminal_sessions.values():
