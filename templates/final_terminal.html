@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Final Web Terminal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1e1e1e;
+            color: #f8f8f2;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .terminal-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .header {
+            background: #2d2d2d;
+            padding: 10px 20px;
+            border-bottom: 1px solid #444;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            color: #66d9ef;
+        }
+
+        .status-info {
+            font-size: 12px;
+            color: #a6e22e;
+        }
+
+        .session-info {
+            font-size: 12px;
+            color: #ae81ff;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            background: #444;
+            color: #f8f8f2;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #555;
+        }
+
+        .btn.danger {
+            background: #f92672;
+        }
+
+        .btn.danger:hover {
+            background: #f92672;
+            opacity: 0.8;
+        }
+
+        .btn.success {
+            background: #a6e22e;
+            color: #1e1e1e;
+        }
+
+        .btn.success:hover {
+            background: #a6e22e;
+            opacity: 0.8;
+        }
+
+        .terminal-output {
+            flex: 1;
+            background: #1e1e1e;
+            padding: 20px;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .command-line {
+            display: flex;
+            background: #2d2d2d;
+            padding: 15px 20px;
+            border-top: 1px solid #444;
+        }
+
+        .prompt {
+            color: #a6e22e;
+            margin-right: 10px;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
+        .command-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #f8f8f2;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            outline: none;
+            caret-color: #f8f8f2;
+        }
+
+        .command-input::placeholder {
+            color: #75715e;
+        }
+        
+        /* Terminal cursor blink effect */
+        .command-input:focus {
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 50% { border-right: 2px solid #f8f8f2; }
+            51%, 100% { border-right: 2px solid transparent; }
+        }
+        
+        /* Command history styling */
+        .command-history {
+            color: #75715e;
+            font-style: italic;
+        }
+        
+        .command-output {
+            color: #f8f8f2;
+        }
+        
+        .command-error {
+            color: #f92672;
+        }
+        
+        .command-success {
+            color: #a6e22e;
+        }
+
+        .error {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #f92672;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1000;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            font-size: 16px;
+            color: #66d9ef;
+        }
+
+        .spinner {
+            border: 2px solid #444;
+            border-top: 2px solid #66d9ef;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Editor Modal Styles */
+        .editor-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+        }
+
+        .editor-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            height: 80%;
+            background: #1e1e1e;
+            border: 1px solid #444;
+            border-radius: 5px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .editor-header {
+            background: #2d2d2d;
+            padding: 10px 20px;
+            border-bottom: 1px solid #444;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .editor-title {
+            color: #66d9ef;
+            font-weight: bold;
+        }
+
+        .editor-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .editor-textarea {
+            flex: 1;
+            background: #1e1e1e;
+            color: #f8f8f2;
+            border: none;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+            resize: none;
+            outline: none;
+        }
+
+        .editor-textarea::placeholder {
+            color: #75715e;
+        }
+    </style>
+</head>
+<body>
+    <div class="terminal-container">
+        <div class="header">
+            <div>
+                <h1>🚀 Final Web Terminal</h1>
+                <div class="session-info">Session: <span id="session-id">No session</span></div>
+            </div>
+            <div class="status-info" id="status-info">Disconnected</div>
+            <div class="controls">
+                <button class="btn success" onclick="createNewSession()">New Session</button>
+                <button class="btn" onclick="clearTerminal()">Clear</button>
+                <button class="btn danger" onclick="closeSession()">Close</button>
+            </div>
+        </div>
+        
+        <div class="terminal-output" id="terminal-output">
+            <div class="loading">
+                <div class="spinner"></div>
+                Creating terminal session...
+            </div>
+        </div>
+        
+        <div class="command-line">
+            <span class="prompt" id="prompt">root@localhost:/$ </span>
+            <input type="text" class="command-input" id="command-input" placeholder="Enter command..." disabled>
+        </div>
+    </div>
+
+    <!-- Editor Modal -->
+    <div class="editor-modal" id="editor-modal">
+        <div class="editor-content">
+            <div class="editor-header">
+                <div class="editor-title" id="editor-title">Editing: </div>
+                <div class="editor-controls">
+                    <button class="btn success" onclick="saveFile()">Save</button>
+                    <button class="btn" onclick="closeEditor()">Cancel</button>
+                </div>
+            </div>
+            <textarea class="editor-textarea" id="editor-textarea" placeholder="Start typing..."></textarea>
+        </div>
+    </div>
+
+    <script>
+        class FinalTerminal {
+            constructor() {
+                this.sessionId = null;
+                this.isConnected = false;
+                this.outputElement = document.getElementById('terminal-output');
+                this.promptElement = document.getElementById('prompt');
+                this.inputElement = document.getElementById('command-input');
+                
+                this.initTerminal();
+                this.createSession();
+            }
+            
+            initTerminal() {
+                // Initialize command history
+                this.commandHistory = [];
+                this.historyIndex = -1;
+                this.currentInput = '';
+                
+                // Handle command input with advanced features
+                this.inputElement.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        this.executeCommand();
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        this.navigateHistory('up');
+                    } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        this.navigateHistory('down');
+                    } else if (e.key === 'Tab') {
+                        e.preventDefault();
+                        this.handleTabCompletion();
+                    } else if (e.key === 'Escape') {
+                        this.clearInput();
+                    } else if (e.ctrlKey && e.key === 'c') {
+                        e.preventDefault();
+                        this.clearInput();
+                        this.writeOutput('^C\n');
+                    } else if (e.ctrlKey && e.key === 'l') {
+                        e.preventDefault();
+                        this.clear();
+                    } else if (e.ctrlKey && e.key === 'a') {
+                        e.preventDefault();
+                        this.inputElement.setSelectionRange(0, this.inputElement.value.length);
+                    } else if (e.ctrlKey && e.key === 'e') {
+                        e.preventDefault();
+                        this.inputElement.setSelectionRange(this.inputElement.value.length, this.inputElement.value.length);
+                    } else if (e.ctrlKey && e.key === 'u') {
+                        e.preventDefault();
+                        this.inputElement.value = '';
+                    } else if (e.ctrlKey && e.key === 'k') {
+                        e.preventDefault();
+                        const cursorPos = this.inputElement.selectionStart;
+                        this.inputElement.value = this.inputElement.value.substring(0, cursorPos);
+                    } else if (e.ctrlKey && e.key === 'w') {
+                        e.preventDefault();
+                        this.deleteWordBackward();
+                    }
+                });
+                
+                // Focus input initially
+                this.inputElement.focus();
+            }
+            
+            async createSession() {
+                try {
+                    this.updateStatus('Creating session...');
+                    
+                    const response = await fetch('/create_session', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.sessionId = data.session_id;
+                        document.getElementById('session-id').textContent = this.sessionId;
+                        this.isConnected = true;
+                        this.updateStatus('Connected');
+                        this.updatePrompt();
+                        this.inputElement.disabled = false;
+                        this.inputElement.focus();
+                        
+                        // Clear the loading message and show welcome
+                        this.outputElement.innerHTML = '';
+                        this.writeOutput('Terminal session created successfully!\n', 'success');
+                        this.writeOutput('Type "help" for available commands or start using Linux commands.\n\n', 'output');
+                    } else {
+                        this.showError('Failed to create session: ' + data.error);
+                        this.updateStatus('Failed to create session');
+                    }
+                } catch (error) {
+                    this.showError('Network error: ' + error.message);
+                    this.updateStatus('Network error');
+                }
+            }
+            
+            async executeCommand() {
+                const command = this.inputElement.value.trim();
+                if (!command || !this.sessionId) return;
+                
+                // Add to command history
+                this.commandHistory.push(command);
+                this.historyIndex = -1;
+                
+                // Clear input
+                this.inputElement.value = '';
+                
+                // Show command in output
+                this.writeOutput(`${this.promptElement.textContent}${command}\n`);
+                
+                try {
+                    this.updateStatus('Executing command...');
+                    
+                    const response = await fetch(`/execute/${this.sessionId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ command: command })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // Handle clear command
+                        if (command === 'clear') {
+                            this.outputElement.innerHTML = '';
+                        } else {
+                            // Check if this is an editor response
+                            if (data.output && data.output.startsWith('__EDITOR__:')) {
+                                this.openEditor(data.output);
+                            } else {
+                                // Show output
+                                if (data.output) {
+                                    this.writeOutput(data.output);
+                                }
+                            }
+                        }
+                        
+                        // Update prompt
+                        if (data.prompt) {
+                            this.promptElement.textContent = data.prompt;
+                        }
+                        
+                        this.updateStatus('Connected');
+                    } else {
+                        this.writeOutput(`Error: ${data.error}\n`);
+                        this.updateStatus('Error');
+                    }
+                } catch (error) {
+                    this.writeOutput(`Network error: ${error.message}\n`);
+                    this.updateStatus('Network error');
+                }
+                
+                // Focus input again
+                this.inputElement.focus();
+            }
+            
+            async closeSession() {
+                if (!this.sessionId) return;
+                
+                try {
+                    await fetch(`/close_session/${this.sessionId}`, {
+                        method: 'POST'
+                    });
+                    
+                    this.sessionId = null;
+                    this.isConnected = false;
+                    this.updateStatus('Disconnected');
+                    document.getElementById('session-id').textContent = 'No session';
+                    this.inputElement.disabled = true;
+                    this.writeOutput('Session closed.\n');
+                } catch (error) {
+                    console.error('Error closing session:', error);
+                }
+            }
+            
+            updateStatus(status) {
+                document.getElementById('status-info').textContent = status;
+            }
+            
+            updatePrompt() {
+                // Get current prompt from server
+                this.promptElement.textContent = 'root@localhost:/$ ';
+            }
+            
+            writeOutput(text, type = 'output') {
+                const span = document.createElement('span');
+                span.className = `command-${type}`;
+                span.textContent = text;
+                this.outputElement.appendChild(span);
+                this.outputElement.scrollTop = this.outputElement.scrollHeight;
+            }
+            
+            showError(message) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error';
+                errorDiv.textContent = message;
+                document.querySelector('.terminal-container').appendChild(errorDiv);
+                
+                setTimeout(() => {
+                    errorDiv.remove();
+                }, 5000);
+            }
+            
+            clear() {
+                this.outputElement.innerHTML = '';
+            }
+            
+            // Command History Navigation
+            navigateHistory(direction) {
+                if (this.commandHistory.length === 0) return;
+                
+                if (direction === 'up') {
+                    if (this.historyIndex === -1) {
+                        // First time pressing up - save current input
+                        this.currentInput = this.inputElement.value;
+                    }
+                    
+                    if (this.historyIndex < this.commandHistory.length - 1) {
+                        this.historyIndex++;
+                        this.inputElement.value = this.commandHistory[this.commandHistory.length - 1 - this.historyIndex];
+                    }
+                } else if (direction === 'down') {
+                    if (this.historyIndex > 0) {
+                        this.historyIndex--;
+                        this.inputElement.value = this.commandHistory[this.commandHistory.length - 1 - this.historyIndex];
+                    } else if (this.historyIndex === 0) {
+                        this.historyIndex = -1;
+                        this.inputElement.value = this.currentInput;
+                    }
+                }
+                
+                // Move cursor to end
+                this.inputElement.setSelectionRange(this.inputElement.value.length, this.inputElement.value.length);
+            }
+            
+            // Tab Completion
+            async handleTabCompletion() {
+                const currentInput = this.inputElement.value;
+                const cursorPosition = this.inputElement.selectionStart;
+                
+                // Get the word being completed
+                const beforeCursor = currentInput.substring(0, cursorPosition);
+                const words = beforeCursor.split(' ');
+                const currentWord = words[words.length - 1];
+                
+                if (currentWord === '') return;
+                
+                try {
+                    // Get completions from server
+                    const response = await fetch(`/tab_complete/${this.sessionId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ 
+                            input: currentInput,
+                            cursor_position: cursorPosition,
+                            current_word: currentWord
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success && data.completions) {
+                        if (data.completions.length === 1) {
+                            // Single completion - complete it
+                            this.completeWord(data.completions[0], currentWord, words, cursorPosition);
+                        } else if (data.completions.length > 1) {
+                            // Multiple completions - show options
+                            this.showCompletions(data.completions);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Tab completion error:', error);
+                }
+            }
+            
+            completeWord(completion, currentWord, words, cursorPosition) {
+                const beforeCursor = this.inputElement.value.substring(0, cursorPosition);
+                const afterCursor = this.inputElement.value.substring(cursorPosition);
+                
+                // Replace the current word with completion
+                const newBeforeCursor = beforeCursor.substring(0, beforeCursor.length - currentWord.length) + completion;
+                this.inputElement.value = newBeforeCursor + afterCursor;
+                
+                // Move cursor after completion
+                const newCursorPosition = newBeforeCursor.length;
+                this.inputElement.setSelectionRange(newCursorPosition, newCursorPosition);
+            }
+            
+            showCompletions(completions) {
+                // Show completions in terminal output
+                this.writeOutput('\n', 'output');
+                this.writeOutput('Available completions:\n', 'output');
+                completions.forEach(comp => {
+                    this.writeOutput(`  ${comp}\n`, 'output');
+                });
+                this.writeOutput('\n', 'output');
+                
+                // Show current prompt and input
+                this.writeOutput(`${this.promptElement.textContent}${this.inputElement.value}`, 'output');
+            }
+            
+            clearInput() {
+                this.inputElement.value = '';
+                this.historyIndex = -1;
+            }
+            
+            deleteWordBackward() {
+                const input = this.inputElement.value;
+                const cursorPos = this.inputElement.selectionStart;
+                
+                // Find the start of the word before cursor
+                let wordStart = cursorPos;
+                while (wordStart > 0 && /\s/.test(input[wordStart - 1])) {
+                    wordStart--;
+                }
+                while (wordStart > 0 && !/\s/.test(input[wordStart - 1])) {
+                    wordStart--;
+                }
+                
+                // Delete the word
+                const newValue = input.substring(0, wordStart) + input.substring(cursorPos);
+                this.inputElement.value = newValue;
+                this.inputElement.setSelectionRange(wordStart, wordStart);
+            }
+            
+            openEditor(editorResponse) {
+                // Parse the editor response: __EDITOR__:filename:content
+                const parts = editorResponse.split(':');
+                if (parts.length >= 3) {
+                    const filename = parts[1];
+                    const content = parts.slice(2).join(':'); // Rejoin in case content has colons
+                    
+                    // Show editor modal
+                    document.getElementById('editor-title').textContent = `Editing: ${filename}`;
+                    document.getElementById('editor-textarea').value = content;
+                    document.getElementById('editor-modal').style.display = 'block';
+                    
+                    // Focus on textarea
+                    document.getElementById('editor-textarea').focus();
+                    
+                    // Store current filename for saving
+                    this.currentEditingFile = filename;
+                }
+            }
+            
+            async saveFile() {
+                if (!this.currentEditingFile || !this.sessionId) return;
+                
+                const content = document.getElementById('editor-textarea').value;
+                
+                try {
+                    const response = await fetch(`/save_file/${this.sessionId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            filename: this.currentEditingFile,
+                            content: content
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.writeOutput(`File ${this.currentEditingFile} saved successfully.\n`);
+                        this.closeEditor();
+                    } else {
+                        this.writeOutput(`Error saving file: ${data.error}\n`);
+                    }
+                } catch (error) {
+                    this.writeOutput(`Network error saving file: ${error.message}\n`);
+                }
+            }
+            
+            closeEditor() {
+                document.getElementById('editor-modal').style.display = 'none';
+                this.currentEditingFile = null;
+                this.inputElement.focus();
+            }
+        }
+        
+        // Global terminal instance
+        let terminalInstance = null;
+        
+        // Initialize terminal when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            terminalInstance = new FinalTerminal();
+        });
+        
+        // Global functions for buttons
+        function createNewSession() {
+            if (terminalInstance) {
+                terminalInstance.closeSession().then(() => {
+                    terminalInstance.createSession();
+                });
+            }
+        }
+        
+        function clearTerminal() {
+            if (terminalInstance) {
+                terminalInstance.clear();
+            }
+        }
+        
+        function closeSession() {
+            if (terminalInstance) {
+                terminalInstance.closeSession();
+            }
+        }
+        
+        function saveFile() {
+            if (terminalInstance) {
+                terminalInstance.saveFile();
+            }
+        }
+        
+        function closeEditor() {
+            if (terminalInstance) {
+                terminalInstance.closeEditor();
+            }
+        }
+        
+        // Handle keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'l') {
+                e.preventDefault();
+                clearTerminal();
+            }
+            if (e.ctrlKey && e.key === 'k') {
+                e.preventDefault();
+                createNewSession();
+            }
+        });
+    </script>
+</body>
+</html> 

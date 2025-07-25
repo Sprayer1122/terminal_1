@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Web Terminal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1e1e1e;
+            color: #f8f8f2;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .terminal-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .header {
+            background: #2d2d2d;
+            padding: 10px 20px;
+            border-bottom: 1px solid #444;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            color: #66d9ef;
+        }
+
+        .status-info {
+            font-size: 12px;
+            color: #a6e22e;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            background: #444;
+            color: #f8f8f2;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .btn:hover {
+            background: #555;
+        }
+
+        .btn.danger {
+            background: #f92672;
+        }
+
+        .btn.danger:hover {
+            background: #f92672;
+            opacity: 0.8;
+        }
+
+        .terminal-output {
+            flex: 1;
+            background: #1e1e1e;
+            padding: 20px;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .command-line {
+            display: flex;
+            background: #2d2d2d;
+            padding: 15px 20px;
+            border-top: 1px solid #444;
+        }
+
+        .prompt {
+            color: #a6e22e;
+            margin-right: 10px;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
+        .command-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #f8f8f2;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .command-input::placeholder {
+            color: #75715e;
+        }
+
+        .output-line {
+            margin-bottom: 5px;
+        }
+
+        .command-output {
+            color: #f8f8f2;
+            background: #2d2d2d;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 3px solid #66d9ef;
+        }
+
+        .error-output {
+            color: #f92672;
+            background: #2d2d2d;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 3px solid #f92672;
+        }
+
+        .success-output {
+            color: #a6e22e;
+            background: #2d2d2d;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 3px solid #a6e22e;
+        }
+
+        .timestamp {
+            color: #75715e;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+
+        .loading {
+            color: #fd971f;
+            font-style: italic;
+        }
+
+        .session-info {
+            background: #2d2d2d;
+            padding: 5px 10px;
+            font-size: 12px;
+            color: #75715e;
+            border-bottom: 1px solid #444;
+        }
+
+        @media (max-width: 768px) {
+            .terminal-container {
+                padding: 0;
+            }
+            
+            .header {
+                padding: 8px 15px;
+            }
+            
+            .terminal-output {
+                padding: 15px;
+            }
+            
+            .command-line {
+                padding: 10px 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="terminal-container">
+        <div class="header">
+            <h1>🚀 Simple Web Terminal</h1>
+            <div class="status-info" id="status-info">
+                Initializing...
+            </div>
+            <div class="controls">
+                <button class="btn" onclick="createNewSession()">New Session</button>
+                <button class="btn" onclick="clearTerminal()">Clear</button>
+                <button class="btn danger" onclick="closeSession()">Close</button>
+            </div>
+        </div>
+        
+        <div class="session-info" id="session-info">
+            Session: <span id="session-id">Creating...</span>
+        </div>
+        
+        <div class="terminal-output" id="terminal-output">
+            <div class="output-line">
+                <span class="timestamp">Welcome to Simple Web Terminal</span>
+            </div>
+            <div class="output-line">
+                <span class="timestamp">Creating session...</span>
+            </div>
+        </div>
+        
+        <div class="command-line">
+            <span class="prompt" id="prompt">$</span>
+            <input type="text" class="command-input" id="command-input" placeholder="Enter command..." autocomplete="off">
+        </div>
+    </div>
+
+    <script>
+        class SimpleTerminal {
+            constructor() {
+                this.sessionId = null;
+                this.isConnected = false;
+                this.commandHistory = [];
+                this.historyIndex = -1;
+                
+                this.outputElement = document.getElementById('terminal-output');
+                this.inputElement = document.getElementById('command-input');
+                this.promptElement = document.getElementById('prompt');
+                this.statusElement = document.getElementById('status-info');
+                this.sessionElement = document.getElementById('session-id');
+                
+                this.initializeEventListeners();
+                this.createSession();
+                this.focusInput();
+            }
+            
+            initializeEventListeners() {
+                this.inputElement.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        this.executeCommand();
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        this.navigateHistory('up');
+                    } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        this.navigateHistory('down');
+                    }
+                });
+                
+                // Focus input when clicking anywhere
+                document.addEventListener('click', () => {
+                    this.focusInput();
+                });
+            }
+            
+            async createSession() {
+                try {
+                    this.updateStatus('Creating session...');
+                    
+                    const response = await fetch('/create_session', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.sessionId = data.session_id;
+                        this.isConnected = true;
+                        this.sessionElement.textContent = this.sessionId;
+                        this.promptElement.textContent = data.prompt;
+                        this.updateStatus('Connected');
+                        
+                        this.addOutput('Session created successfully!', 'success');
+                        this.addOutput('Type "help" for available commands', 'normal');
+                    } else {
+                        this.showError('Failed to create session: ' + data.error);
+                    }
+                } catch (error) {
+                    this.showError('Network error: ' + error.message);
+                }
+            }
+            
+            async executeCommand() {
+                const command = this.inputElement.value.trim();
+                
+                if (!command || !this.isConnected) {
+                    this.inputElement.value = '';
+                    return;
+                }
+                
+                if (command === 'help') {
+                    this.showHelp();
+                    this.inputElement.value = '';
+                    return;
+                }
+                
+                if (command === 'clear') {
+                    this.clearOutput();
+                    this.inputElement.value = '';
+                    return;
+                }
+                
+                this.addToHistory(command);
+                this.addOutput(`<span class="timestamp">[${new Date().toLocaleTimeString()}]</span> <span style="color: #66d9ef;">$ ${command}</span>`, 'command');
+                
+                // Show loading indicator
+                const loadingId = this.addOutput('<span class="loading">Executing command...</span>', 'loading');
+                
+                try {
+                    const response = await fetch(`/execute/${this.sessionId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ command: command })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    // Remove loading indicator
+                    this.removeOutput(loadingId);
+                    
+                    if (result.success) {
+                        // Update prompt
+                        this.promptElement.textContent = result.prompt;
+                        
+                        // Show output
+                        if (result.output) {
+                            this.addOutput(result.output, 'success');
+                        }
+                    } else {
+                        this.addOutput(`Error: ${result.error}`, 'error');
+                    }
+                    
+                } catch (error) {
+                    this.removeOutput(loadingId);
+                    this.addOutput(`Network error: ${error.message}`, 'error');
+                }
+                
+                this.inputElement.value = '';
+                this.scrollToBottom();
+            }
+            
+            addToHistory(command) {
+                if (command && command !== this.commandHistory[this.commandHistory.length - 1]) {
+                    this.commandHistory.push(command);
+                    if (this.commandHistory.length > 50) {
+                        this.commandHistory.shift();
+                    }
+                }
+                this.historyIndex = this.commandHistory.length;
+            }
+            
+            navigateHistory(direction) {
+                if (this.commandHistory.length === 0) return;
+                
+                if (direction === 'up') {
+                    if (this.historyIndex > 0) {
+                        this.historyIndex--;
+                    }
+                } else if (direction === 'down') {
+                    if (this.historyIndex < this.commandHistory.length - 1) {
+                        this.historyIndex++;
+                    } else {
+                        this.historyIndex = this.commandHistory.length;
+                        this.inputElement.value = '';
+                        return;
+                    }
+                }
+                
+                if (this.historyIndex >= 0 && this.historyIndex < this.commandHistory.length) {
+                    this.inputElement.value = this.commandHistory[this.historyIndex];
+                }
+            }
+            
+            addOutput(content, type = 'normal') {
+                const outputDiv = document.createElement('div');
+                outputDiv.className = 'output-line';
+                
+                if (type === 'command') {
+                    outputDiv.innerHTML = content;
+                } else if (type === 'success') {
+                    outputDiv.innerHTML = `<div class="success-output">${content}</div>`;
+                } else if (type === 'error') {
+                    outputDiv.innerHTML = `<div class="error-output">${content}</div>`;
+                } else if (type === 'loading') {
+                    outputDiv.innerHTML = content;
+                    outputDiv.id = 'loading-' + Date.now();
+                } else {
+                    outputDiv.innerHTML = `<div class="command-output">${content}</div>`;
+                }
+                
+                this.outputElement.appendChild(outputDiv);
+                return outputDiv.id;
+            }
+            
+            removeOutput(id) {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.remove();
+                }
+            }
+            
+            showHelp() {
+                const helpText = `
+                    <div class="command-output">
+                        <strong>Simple Web Terminal Help</strong><br><br>
+                        <strong>Basic Commands:</strong><br>
+                        • ls - List directory contents<br>
+                        • pwd - Print working directory<br>
+                        • cd - Change directory<br>
+                        • cat - Display file contents<br>
+                        • mkdir - Create directory<br>
+                        • rm - Remove files/directories<br>
+                        • cp - Copy files<br>
+                        • mv - Move/rename files<br><br>
+                        <strong>System Commands:</strong><br>
+                        • whoami - Show current user<br>
+                        • date - Show current date/time<br>
+                        • uptime - Show system uptime<br>
+                        • df - Show disk usage<br>
+                        • free - Show memory usage<br>
+                        • ps - Show running processes<br><br>
+                        <strong>Network Commands:</strong><br>
+                        • ping - Test network connectivity<br>
+                        • curl - Transfer data from/to server<br>
+                        • wget - Download files<br>
+                        • netstat - Network statistics<br><br>
+                        <strong>Package Management:</strong><br>
+                        • apt update - Update package list<br>
+                        • apt install - Install packages<br>
+                        • pip install - Install Python packages<br>
+                        • npm install - Install Node.js packages<br><br>
+                        <strong>Special Commands:</strong><br>
+                        • help - Show this help<br>
+                        • clear - Clear terminal output<br><br>
+                        <strong>Navigation:</strong><br>
+                        • Use ↑/↓ arrows to navigate command history<br>
+                        • Press Enter to execute commands<br>
+                        • Commands have a 30-second timeout
+                    </div>
+                `;
+                this.addOutput(helpText, 'normal');
+            }
+            
+            clearOutput() {
+                this.outputElement.innerHTML = `
+                    <div class="output-line">
+                        <span class="timestamp">Terminal cleared</span>
+                    </div>
+                `;
+            }
+            
+            async closeSession() {
+                if (!this.sessionId) return;
+                
+                try {
+                    await fetch(`/close_session/${this.sessionId}`, {
+                        method: 'POST'
+                    });
+                    
+                    this.sessionId = null;
+                    this.isConnected = false;
+                    this.updateStatus('Disconnected');
+                    this.sessionElement.textContent = 'No session';
+                    this.promptElement.textContent = '$';
+                } catch (error) {
+                    console.error('Error closing session:', error);
+                }
+            }
+            
+            updateStatus(status) {
+                this.statusElement.textContent = status;
+            }
+            
+            showError(message) {
+                this.addOutput(message, 'error');
+            }
+            
+            scrollToBottom() {
+                this.outputElement.scrollTop = this.outputElement.scrollHeight;
+            }
+            
+            focusInput() {
+                this.inputElement.focus();
+            }
+        }
+        
+        // Global terminal instance
+        let terminalInstance = null;
+        
+        // Initialize terminal when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            terminalInstance = new SimpleTerminal();
+        });
+        
+        // Global functions for buttons
+        function createNewSession() {
+            if (terminalInstance) {
+                terminalInstance.closeSession().then(() => {
+                    terminalInstance.createSession();
+                });
+            }
+        }
+        
+        function clearTerminal() {
+            if (terminalInstance) {
+                terminalInstance.clearOutput();
+            }
+        }
+        
+        function closeSession() {
+            if (terminalInstance) {
+                terminalInstance.closeSession();
+            }
+        }
+        
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (terminalInstance) {
+                terminalInstance.closeSession();
+            }
+        });
+    </script>
+</body>
+</html> 
