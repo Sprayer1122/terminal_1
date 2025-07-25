@@ -429,7 +429,8 @@
                     const response = await fetch(`/execute/${this.sessionId}`, {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json'
+                            'Content-Type': 'application/json',
+                            'Accept-Encoding': 'gzip, deflate'
                         },
                         body: JSON.stringify({ command: command })
                     });
@@ -567,7 +568,8 @@
                     const response = await fetch(`/tab_complete/${this.sessionId}`, {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json'
+                            'Content-Type': 'application/json',
+                            'Accept-Encoding': 'gzip, deflate'
                         },
                         body: JSON.stringify({ 
                             input: currentInput,
